@@ -64,8 +64,7 @@ def Dot_Diffusion(img):
         [53,46, 3, 2,30,56,58,52],
         [55,57,59,60,62,63,61,54]
     ])
-    tile_h = (h + 7) // 8
-    tile_w = (w + 7) // 8
+    tile_h, tile_w = (h + 7) // 8, (w + 7) // 8
     class_matrix = np.tile(class_matrix, (tile_h, tile_w))[:h, :w]
 
     N = class_matrix.max() + 1
@@ -89,33 +88,97 @@ def Dot_Diffusion(img):
 
     return halftone.astype(np.uint8)
 
-# def DBS(img, iterations=2, kernel_size=7):
-#     img = img.astype(float)
-#     h, w = img.shape
-#     halftone = (img > 127).astype(float) * 255
+def DBS(img, iterations=2, kernel_size=7):
+    times=0
+    img = img.astype(float)
+    h, w = img.shape
+    halftone = (img > 127).astype(float) * 255
 
-#     kernel = cv.getGaussianKernel(kernel_size, kernel_size / 3)
-#     kernel = kernel @ kernel.T
+    kernel = cv.getGaussianKernel(kernel_size, kernel_size / 3)
+    kernel = kernel @ kernel.T
 
-#     for _ in range(iterations):
-#         for i in range(h):
-#             for j in range(w):
-#                 current = halftone[i, j]
-#                 halftone[i, j] = 255 - current
+    for _ in range(iterations):
+        for i in range(h):
+            for j in range(w):
+                current = halftone[i, j]
+                halftone[i, j] = 255 - current
 
-#                 filtered = cv.filter2D(halftone, -1, kernel)
-#                 mse_new = np.mean((filtered - img) ** 2)
-#                 halftone[i, j] = current
-#                 filtered_old = cv.filter2D(halftone, -1, kernel)
-#                 mse_old = np.mean((filtered_old - img) ** 2)
+                filtered = cv.filter2D(halftone, -1, kernel)
+                mse_new = np.mean((filtered - img) ** 2)
+                halftone[i, j] = current
+                filtered_old = cv.filter2D(halftone, -1, kernel)
+                mse_old = np.mean((filtered_old - img) ** 2)
 
-#                 if mse_new < mse_old: halftone[i, j] = 255 - current
-#     return halftone.astype(np.uint8)
+                if mse_new < mse_old: halftone[i, j] = 255 - current
+                times+=1
+                print(f'DBS times:{times}')
+    return halftone.astype(np.uint8)
 
-def hpsnr(original, halftoned):
-    mse = np.mean((original.astype(float) - halftoned.astype(float)) ** 2)
-    if mse == 0: return float('inf')
-    return round(10 * np.log10(255**2 / mse), 5)
+def DBS1(img, iterations=3, kernel_size=7):
+    img_float = img.astype(float)
+    h, w = img.shape
+    
+    halftone = (img_float > 127).astype(float) * 255
+    
+    kernel = cv.getGaussianKernel(kernel_size, kernel_size / 3)
+    kernel = kernel @ kernel.T
+
+    filtered_halftone = cv.filter2D(halftone, -1, kernel)
+    mse_old = np.mean((filtered_halftone - img_float) ** 2)
+    
+    print(f"--- DBS 簡化版開始，初始 MSE: {mse_old:.2f} ---")
+    
+    total_toggles = 0
+
+    for iter_count in range(1, iterations + 1):
+        toggles_in_iter = 0
+        
+        for i in range(h):
+            for j in range(w):
+                current_pixel = halftone[i, j]
+                
+                halftone[i, j] = 255 - current_pixel
+
+                filtered_halftone_new = cv.filter2D(halftone, -1, kernel)
+                mse_new = np.mean((filtered_halftone_new - img_float) ** 2)
+
+                if mse_new < mse_old:
+                    mse_old = mse_new
+                    toggles_in_iter += 1
+                else:
+                    halftone[i, j] = current_pixel
+        
+        total_toggles += toggles_in_iter
+        print(f"第 {iter_count} 次迭代完成。接受翻轉次數: {toggles_in_iter}，當前 MSE: {mse_old:.2f}")
+
+        if toggles_in_iter == 0 and iter_count > 1:
+            print("已收斂，提前終止。")
+            break
+
+    print(f"--- DBS 簡化版結束，總翻轉次數: {total_toggles} ---")
+    
+    return halftone.astype(np.uint8)
+
+def hpsnr(original, halftoned, hvs_filter='gaussian'):
+    original = original.astype(np.float32)
+    halftoned = halftoned.astype(np.float32)
+
+    if hvs_filter == 'gaussian':
+        h = cv.getGaussianKernel(5, 1.0)
+        hvs = h @ h.T
+    elif hvs_filter == 'dog':
+        g1 = cv.getGaussianKernel(7, 0.8)
+        g2 = cv.getGaussianKernel(7, 1.6)
+        hvs = (g1 @ g1.T) - (g2 @ g2.T)
+    else:
+        raise ValueError("Unknown HVS filter type")
+
+    filtered_error = cv.filter2D(original - halftoned, -1, hvs)
+    mse_hvs = np.mean(filtered_error ** 2)
+
+    if mse_hvs == 0: return float('inf')
+
+    return round(10 * np.log10((255 ** 2) / mse_hvs), 5)
 
 if __name__ == '__main__':
     img_path = 'Baboon'
@@ -126,8 +189,8 @@ if __name__ == '__main__':
 
     ordered_img = Ordered_Dithering(img, thresholds_matrix)
     error_diff_img = Error_Diffusion(img)
-    #dbs_img = DBS(img)
     dotdiff_img = Dot_Diffusion(img)
+    dbs_img = DBS(img)
 
     plt.figure(figsize=(12,8))
     plt.subplot(2,2,1); plt.title('Original'); plt.imshow(img, cmap='gray'); plt.axis('off')
@@ -138,11 +201,11 @@ if __name__ == '__main__':
 
     cv.imwrite('result/'+ img_path +'_dithering.png', ordered_img)
     cv.imwrite('result/'+ img_path +'_diffusion.png', error_diff_img)
-    #cv.imwrite('result/F16_DBS.png', dbs_img)
     cv.imwrite('result/'+ img_path +'_DotDiffusion.png', dotdiff_img)
+    cv.imwrite('result/'+ img_path +'_DBS.png', dbs_img)
 
     print(img_path)
     print("HPSNR Ordered Dithering:", hpsnr(img, ordered_img))
     print("HPSNR Error Diffusion:", hpsnr(img, error_diff_img))
-    #print("HPSNR DBS:", hpsnr(img, dbs_img))
     print("HPSNR Dot Diffusion:", hpsnr(img, dotdiff_img))
+    print("HPSNR DBS:", hpsnr(img, dbs_img))
