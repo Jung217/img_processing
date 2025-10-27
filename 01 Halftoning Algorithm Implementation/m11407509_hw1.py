@@ -114,29 +114,28 @@ def DBS(img, iterations=2, kernel_size=7):
                 print(f'DBS times:{times}')
     return halftone.astype(np.uint8)
 
-def DBS1(img, iterations=3, kernel_size=7):
-    img_float = img.astype(float)
+def DBS1(img, iterations=3, kernel_size=5, is_halftone=False):
+    img_float = img.astype(np.float32)
     h, w = img.shape
-    
-    halftone = (img_float > 127).astype(float) * 255
-    
-    kernel = cv.getGaussianKernel(kernel_size, kernel_size / 3)
+
+    if is_halftone or np.unique(img).size <= 2: halftone = img_float.copy()
+    else: halftone = (img_float > 127).astype(np.float32) * 255
+
+    kernel = cv.getGaussianKernel(kernel_size, 1)
     kernel = kernel @ kernel.T
+    kernel /= np.sum(kernel)
 
     filtered_halftone = cv.filter2D(halftone, -1, kernel)
     mse_old = np.mean((filtered_halftone - img_float) ** 2)
-    
-    print(f"--- DBS 簡化版開始，初始 MSE: {mse_old:.2f} ---")
-    
-    total_toggles = 0
+
+    print(f"--- DBS 開始，初始 MSE: {mse_old:.2f} ---")
 
     for iter_count in range(1, iterations + 1):
         toggles_in_iter = 0
-        
+
         for i in range(h):
             for j in range(w):
                 current_pixel = halftone[i, j]
-                
                 halftone[i, j] = 255 - current_pixel
 
                 filtered_halftone_new = cv.filter2D(halftone, -1, kernel)
@@ -147,16 +146,58 @@ def DBS1(img, iterations=3, kernel_size=7):
                     toggles_in_iter += 1
                 else:
                     halftone[i, j] = current_pixel
-        
-        total_toggles += toggles_in_iter
-        print(f"第 {iter_count} 次迭代完成。接受翻轉次數: {toggles_in_iter}，當前 MSE: {mse_old:.2f}")
 
+        print(f"Iter {iter_count}: toggles={toggles_in_iter}, MSE={mse_old:.2f}")
         if toggles_in_iter == 0 and iter_count > 1:
-            print("已收斂，提前終止。")
+            print("收斂，提前結束。")
             break
 
-    print(f"--- DBS 簡化版結束，總翻轉次數: {total_toggles} ---")
-    
+    return halftone.astype(np.uint8)
+
+def DBS_local(img, iterations=3, kernel_size=5, is_halftone=False, block_size=3):
+    img_float = img.astype(np.float32)
+    h, w = img.shape
+
+    if is_halftone or np.unique(img).size <= 2: halftone = img_float.copy()
+    else: halftone = (img_float > 127).astype(np.float32) * 255
+
+    kernel = cv.getGaussianKernel(kernel_size, 1)
+    kernel = kernel @ kernel.T
+    kernel /= np.sum(kernel)
+
+    filtered = cv.filter2D(halftone, -1, kernel)
+    mse_old = np.mean((filtered - img_float) ** 2)
+
+    print(f"--- 局部 DBS 開始，初始 MSE: {mse_old:.2f} ---")
+
+    pad = block_size // 2
+    total_toggles = 0
+
+    for iter_count in range(1, iterations + 1):
+        toggles_in_iter = 0
+
+        for i in range(pad, h - pad):
+            for j in range(pad, w - pad):
+                halftone[i, j] = 255 - halftone[i, j]
+
+                local = halftone[i - pad:i + pad + 1, j - pad:j + pad + 1]
+                filtered_local = cv.filter2D(local, -1, kernel)
+                target_local = img_float[i - pad:i + pad + 1, j - pad:j + pad + 1]
+                mse_new = np.mean((filtered_local - target_local) ** 2)
+
+                if mse_new < mse_old:
+                    mse_old = mse_new
+                    toggles_in_iter += 1
+                else: halftone[i, j] = 255 - halftone[i, j]
+
+        total_toggles += toggles_in_iter
+        print(f"Iter {iter_count}: toggles={toggles_in_iter}, MSE={mse_old:.2f}")
+
+        if toggles_in_iter == 0:
+            print("已收斂，提前結束。")
+            break
+
+    print(f"--- DBS 結束，總翻轉: {total_toggles} ---")
     return halftone.astype(np.uint8)
 
 def hpsnr(original, halftoned, hvs_filter='gaussian'):
@@ -170,8 +211,7 @@ def hpsnr(original, halftoned, hvs_filter='gaussian'):
         g1 = cv.getGaussianKernel(7, 0.8)
         g2 = cv.getGaussianKernel(7, 1.6)
         hvs = (g1 @ g1.T) - (g2 @ g2.T)
-    else:
-        raise ValueError("Unknown HVS filter type")
+    else: raise ValueError("Unknown HVS filter type")
 
     filtered_error = cv.filter2D(original - halftoned, -1, hvs)
     mse_hvs = np.mean(filtered_error ** 2)
@@ -191,6 +231,8 @@ if __name__ == '__main__':
     error_diff_img = Error_Diffusion(img)
     dotdiff_img = Dot_Diffusion(img)
     dbs_img = DBS(img)
+    #dbs1_img = DBS1(img, True)
+    #dbsLocal_img = DBS_local(img, True)
 
     plt.figure(figsize=(12,8))
     plt.subplot(2,2,1); plt.title('Original'); plt.imshow(img, cmap='gray'); plt.axis('off')
@@ -203,6 +245,8 @@ if __name__ == '__main__':
     cv.imwrite('result/'+ img_path +'_diffusion.png', error_diff_img)
     cv.imwrite('result/'+ img_path +'_DotDiffusion.png', dotdiff_img)
     cv.imwrite('result/'+ img_path +'_DBS.png', dbs_img)
+    #cv.imwrite('result/'+ img_path +'_DBS1.png', dbs1_img)
+    #cv.imwrite('result/'+ img_path +'_DBSlocal.png', dbsLocal_img)
 
     print(img_path)
     print("HPSNR Ordered Dithering:", hpsnr(img, ordered_img))
