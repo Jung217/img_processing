@@ -50,17 +50,17 @@ def plot_hist(before, after, title, filename):
 
 
 if __name__ == '__main__':
-    img_path = 'Baboon'
+    img_path = 'F-16'
     img = cv.imread('images/' + img_path + '-image.png', cv.IMREAD_GRAYSCALE)
 
     global_img, hist_b, hist_a = Global_HE(img)
     local_img = Local_HE(img)
 
-    cv.imshow("Original", img)
-    cv.imshow("Global HE", global_img)
-    cv.imshow("Local HE", local_img)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+    # cv.imshow("Original", img)
+    # cv.imshow("Global HE", global_img)
+    # cv.imshow("Local HE", local_img)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
 
     cv.imwrite('result/'+ img_path +'_global.png', global_img)
     cv.imwrite('result/'+ img_path +'_local.png', local_img)
