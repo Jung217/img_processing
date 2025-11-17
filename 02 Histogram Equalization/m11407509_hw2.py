@@ -50,17 +50,21 @@ def plot_hist(before, after, title, filename):
 
 
 if __name__ == '__main__':
-    img_path = 'Baboon'
+    img_path = 'F-16'
     img = cv.imread('images/' + img_path + '-image.png', cv.IMREAD_GRAYSCALE)
 
     global_img, hist_b, hist_a = Global_HE(img)
     local_img = Local_HE(img)
     opencv_img = cv.equalizeHist(img)
+    clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    opencv_local = clahe.apply(img)
 
     cv.imwrite('result/'+ img_path +'_global.png', global_img)
     cv.imwrite('result/'+ img_path +'_local.png', local_img)
     cv.imwrite('result/'+ img_path +'_opencv.png', opencv_img)
+    cv.imwrite('result/'+ img_path +'_opencv_local.png', opencv_local)
 
     plot_hist(img, global_img, "Histogram Before vs After Global HE",'result/'+ img_path +'_HE_global.png')
     plot_hist(img, local_img, "Histogram Before vs After Local HE",'result/'+ img_path +'_HE_local.png')
     plot_hist(img, opencv_img, "Histogram Before vs After OpenCV HE",'result/'+ img_path +'_HE_opencv.png')
+    plot_hist(img, opencv_local, "Histogram Before vs After OpenCV CLAHE",'result/'+ img_path +'_HE_opencv_local.png')
