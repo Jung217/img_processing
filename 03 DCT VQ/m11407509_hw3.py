@@ -11,7 +11,6 @@ def Global_DCT(img):
     idct = cv.idct(dct)
     return dct, np.uint8(np.clip(idct, 0, 255))
 
-
 def Local_DCT(img, kernel_size=8):
     h, w = img.shape
     img_f = np.float32(img)
@@ -75,11 +74,9 @@ def lbg_codebook_training(vectors, codebook_size=64, epsilon=1e-3, max_iter=100)
 
     return codebook
 
-
 def vq_encode(vectors, codebook):
     dist = np.linalg.norm(vectors[:, None] - codebook[None, :], axis=2)
     return np.argmin(dist, axis=1)
-
 
 def vq_decode(indices, codebook, image_shape, block_size=4):
     h, w = image_shape
@@ -91,27 +88,36 @@ def vq_decode(indices, codebook, image_shape, block_size=4):
             idx += 1
     return np.uint8(np.clip(rec_img, 0, 255))
 
-
-def visualize_codebook_as_table(codebook):
+def visualize_codebook_as_table(codebook, path):
+    fig, ax = plt.subplots(figsize=(12, 6))
     df = pd.DataFrame(codebook.astype(int))
-    df.to_csv("codebook.csv", index=False)
+    ax.axis('off')
+    table = ax.table(cellText=df.values, colLabels=[f'v{i}' for i in range(df.shape[1])], loc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(6)
+
+    plt.savefig('result/' + path + '_codebook_table.png', dpi=300, bbox_inches='tight')
+    df.to_csv('result/' + path + '_codebook.csv', index=False)
 
 if __name__ == '__main__':
     img_path = 'F-16'
     img = cv.imread('images/' + img_path + '-image.png', cv.IMREAD_GRAYSCALE)
 
-    # ========== DCT ========== #
     dct_global, idct_global = Global_DCT(img)
     filtered_DCT, idct_filtered = frequency_Domain_filter(dct_global, keep=50)
 
-    cv.imwrite('result/'+ img_path +'_idct_global.png', idct_global)
-    cv.imwrite('result/'+ img_path +'_idct_filtered.png', idct_filtered)
+    dct_magnitude = np.log(np.abs(dct_global) + 1)
+    dct_norm = cv.normalize(dct_magnitude, None, 0, 255, cv.NORM_MINMAX)
+    dct_norm = np.uint8(dct_norm)
 
-    # ========== VQ ========== #
     vectors, shape = extract_blocks(img, block_size=4)
     codebook = lbg_codebook_training(vectors, codebook_size=64)
     indices = vq_encode(vectors, codebook)
     rec_img = vq_decode(indices, codebook, shape, block_size=4)
 
+    cv.imwrite('result/'+ img_path +'_idct_global.png', idct_global)
+    cv.imwrite('result/' + img_path + '_DCT_frequency.png', dct_norm)
+    cv.imwrite('result/'+ img_path +'_idct_filtered.png', idct_filtered)
     cv.imwrite('result/'+ img_path +"_VQ_reconstructed.png", rec_img)
-    visualize_codebook_as_table(codebook)
+
+    visualize_codebook_as_table(codebook, img_path)
