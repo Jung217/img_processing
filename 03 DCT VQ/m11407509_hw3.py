@@ -88,19 +88,26 @@ def vq_decode(indices, codebook, image_shape, block_size=4):
             idx += 1
     return np.uint8(np.clip(rec_img, 0, 255))
 
-def visualize_codebook_as_table(codebook, path):
-    fig, ax = plt.subplots(figsize=(12, 6))
-    df = pd.DataFrame(codebook.astype(int))
-    ax.axis('off')
-    table = ax.table(cellText=df.values, colLabels=[f'v{i}' for i in range(df.shape[1])], loc='center')
-    table.auto_set_font_size(False)
-    table.set_fontsize(6)
+def visualize_codebook_as_image(codebook, block_size=4, path='codebook_image'):
+    num_codewords = codebook.shape[0]
+    grid_size = int(np.ceil(np.sqrt(num_codewords)))
 
-    plt.savefig('result/' + path + '_codebook_table.png', dpi=300, bbox_inches='tight')
-    df.to_csv('result/' + path + '_codebook.csv', index=False)
+    img = np.zeros((grid_size * block_size, grid_size * block_size), dtype=np.uint8)
+
+    idx = 0
+    for i in range(grid_size):
+        for j in range(grid_size):
+            if idx >= num_codewords:
+                break
+            block = codebook[idx].reshape(block_size, block_size)
+            img[i*block_size:(i+1)*block_size,
+                j*block_size:(j+1)*block_size] = np.uint8(np.clip(block, 0, 255))
+            idx += 1
+
+    cv.imwrite('result/' + path + '_codebook_image.png', img)
 
 if __name__ == '__main__':
-    img_path = 'F-16'
+    img_path = 'Baboon'
     img = cv.imread('images/' + img_path + '-image.png', cv.IMREAD_GRAYSCALE)
 
     dct_global, idct_global = Global_DCT(img)
@@ -120,4 +127,5 @@ if __name__ == '__main__':
     cv.imwrite('result/'+ img_path +'_idct_filtered.png', idct_filtered)
     cv.imwrite('result/'+ img_path +"_VQ_reconstructed.png", rec_img)
 
-    visualize_codebook_as_table(codebook, img_path)
+    visualize_codebook_as_image(codebook, block_size=4, path=img_path)
+
